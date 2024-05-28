@@ -138,7 +138,6 @@ function leadAim(initPos, targetPos, speed, targetVel) {
   let targetSpeed = Math.sqrt(targetPos.map(n => n**2).reduce((a, b) => a+b));
   for (let i = 0; i < 5; i++) {
     time = Math.sqrt(collisionPos.map((n, idx) => (n-initPos[idx])**2).reduce((a, b) => a+b))/speed;
-    console.log(time)
     collisionPos = targetPos.map((n, idx) => n+targetVel[idx]*time);
   }
   return [unit(collisionPos.map((n, idx) => n-initPos[idx])), collisionPos];
@@ -181,21 +180,21 @@ setInterval(function() {
   if (camFollow === null) {
     if (keys["w"]) {
       camPos[2] += Math.cos(camAngle[0]) * cameraSpeed * Math.cos(camAngle[1]);
-      camPos[0] += Math.sin(-camAngle[0]) * cameraSpeed * Math.cos(camAngle[1])
-      camPos[1] += Math.sin(camAngle[1]) * cameraSpeed
+      camPos[0] += Math.sin(-camAngle[0]) * cameraSpeed * Math.cos(camAngle[1]);
+      camPos[1] += Math.sin(camAngle[1]) * cameraSpeed;
     }
     if (keys["s"]) {
       camPos[2] -= Math.cos(camAngle[0]) * cameraSpeed * Math.cos(camAngle[1])
-      camPos[0] -= Math.sin(-camAngle[0]) * cameraSpeed * Math.cos(camAngle[1])
-      camPos[1] -= Math.sin(camAngle[1]) * cameraSpeed
+      camPos[0] -= Math.sin(-camAngle[0]) * cameraSpeed * Math.cos(camAngle[1]);
+      camPos[1] -= Math.sin(camAngle[1]) * cameraSpeed;
     }
     if (keys["a"]) {
-      camPos[2] -= Math.sin(camAngle[0]) * cameraSpeed
-      camPos[0] -= Math.cos(-camAngle[0]) * cameraSpeed
+      camPos[2] -= Math.sin(camAngle[0]) * cameraSpeed;
+      camPos[0] -= Math.cos(-camAngle[0]) * cameraSpeed;
     }
     if (keys["d"]) {
-      camPos[2] += Math.sin(camAngle[0]) * cameraSpeed
-      camPos[0] += Math.cos(-camAngle[0]) * cameraSpeed
+      camPos[2] += Math.sin(camAngle[0]) * cameraSpeed;
+      camPos[0] += Math.cos(-camAngle[0]) * cameraSpeed;
     }
   } else {
     camPos[0] = camFollow.offset[0] + Math.sin(camAngle[0]) * cameraDistance * Math.cos(camAngle[1]);
@@ -275,27 +274,26 @@ setInterval(function() {
   }
 
 
-  if (shapes[0]) camFollow = shapes[0];
+  if (plane) camFollow = plane;
   let rollSpeed = .07;
   let pitchSpeed = .05;
   if (keys["arrowleft"] || keys["a"]) {
-    shapes[0].update(rollSpeed, "roll")
+    plane.update(rollSpeed, "roll")
   }
   if (keys["arrowright"] || keys["d"]) {
-    shapes[0].update(-rollSpeed, "roll")
+    plane.update(-rollSpeed, "roll")
   }
   if (keys["arrowup"] || keys["w"]) {
-    shapes[0].update(pitchSpeed*.7, "pitch")
+    plane.update(pitchSpeed*.7, "pitch")
   }
   if (keys["arrowdown"] || keys["s"]) {
-    shapes[0].update(-pitchSpeed, "pitch")
+    plane.update(-pitchSpeed, "pitch")
   }
   if (keys[" "]) {
     spawnShot();
   }
-  //shapes[0].moveInDirection(1);
+  plane.moveInDirection(1);
 
-  shapes[2].move([0, 0, 0]);
   for (let bullet of bullets) {
     bullet.moveInDirection(5);
     bullet.distance += 5;
@@ -317,17 +315,16 @@ canvas.addEventListener("click", function(e) {
   canvas.requestPointerLock();
 })
 
-let fileInput = document.querySelector("input[type=file]");
+/*let fileInput = document.querySelector("input[type=file]");
 fileInput.addEventListener("input", async function(e) {
   let fileType = this.files[0].name.match(/\.(\w+)$/)[1];
-  console.log(fileType)
   let reader = new FileReader();
   reader.readAsText(this.files[0])
   reader.onload = () => {
     if (fileType === "obj") console.log(processObj(reader.result));
     else if (fileType === "mtl") console.log(processMtl(reader.result));
   }
-});
+});*/
 
 function processObj(text) {
   let vertices = text.match(/\nv (.+?) (.+?) (.+)/g);
@@ -346,16 +343,7 @@ function processObj(text) {
   }
   shape.offset = center(shape.polys.map(center))
   shape.updateCrossProducts();
-  shapes.push(shape)
-
-  /*if (shapes[1]) {
-    shapes[1].update(shapes[0].rotate[0], "yaw");
-    shapes[1].update(-shapes[0].rotate[1], "pitch");
-    shapes[1].update(-shapes[0].rotate[2], "roll");
-  }*/
-  if (shapes.length === 1) {
-    shapes[0].move([0, 0, -20]);
-  }
+  return shape;
 }
 let materials = {};
 function processMtl(text) {
@@ -370,22 +358,24 @@ function processMtl(text) {
 let bullets = [];
 function spawnShot() {
   let shot = new Shape([]);
-  for (let poly of shapes[1].polys) {
+  for (let poly of bullet.polys) {
     let newPoly = poly.map(pt => pt.map(n=>n));
     newPoly.mtl = poly.mtl;
     shot.polys.push(newPoly);
   }
-  shot.update(shapes[0].rotate[0], "yaw");
-  shot.update(-shapes[0].rotate[1], "pitch");
-  shot.move(shapes[0].offset.map((n, idx) => n-shot.offset[idx]));
+  shot.update(plane.rotate[0], "yaw");
+  shot.update(-plane.rotate[1], "pitch");
+  shot.move(plane.offset.map((n, idx) => n-shot.offset[idx]));
   shot.moveInDirection(2+Math.random()-.5);
   shot.distance = 0;
   shapes.push(shot);
   bullets.push(shot);
-  let lead = leadAim(shapes[0].offset, shapes[2].offset, 5, [0, 0, 0]);
-  let currentAim = [shapes[0].localFrame.roll[1], shapes[0].localFrame.roll[2], shapes[0].localFrame.roll[0]];
-  if (Math.acos(dotProduct(unit(lead[1].map((n, idx) => n-shapes[0].offset[0])), currentAim)) < Math.PI/8) {
-    shot.localFrame.roll = [lead[0][2], lead[0][0], lead[0][1]];
+  if (enemy !== null) {
+    let lead = leadAim(plane.offset, enemy.offset, 5, [0, 0, 0]);
+    let currentAim = [plane.localFrame.roll[1], plane.localFrame.roll[2], plane.localFrame.roll[0]];
+    if (Math.acos(dotProduct(unit(lead[1].map((n, idx) => n-plane.offset[idx])), currentAim)) < Math.PI/8) {
+      shot.localFrame.roll = [lead[0][2], lead[0][0], lead[0][1]];
+    }
   }
 }
 
@@ -395,4 +385,24 @@ document.addEventListener("keydown", function(e) {
 });
 document.addEventListener("keyup", function(e) {
 	delete keys[e.key.toLowerCase()];
+});
+
+["bullet", "plane", "map"].forEach(name => {
+  fetch("https://gosoccerboy5.github.io/plane-battle/assets/" + name + ".mtl").then(res => res.text()).then(mtl => {
+    processMtl(mtl);
+  });
+});
+
+let plane = null, map = null, bullet = null, enemy = null;
+
+fetch("https://gosoccerboy5.github.io/plane-battle/assets/plane.obj").then(res => res.text()).then(obj => {
+  plane = processObj(obj);
+  shapes.push(plane);
+});
+fetch("https://gosoccerboy5.github.io/plane-battle/assets/bullet.obj").then(res => res.text()).then(obj => {
+  bullet = processObj(obj);
+});
+fetch("https://gosoccerboy5.github.io/plane-battle/assets/map.obj").then(res => res.text()).then(obj => {
+  map = processObj(obj);
+  shapes.push(map);
 });
