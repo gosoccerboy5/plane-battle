@@ -135,12 +135,15 @@ function unit(list) {
 }
 function leadAim(initPos, targetPos, speed, targetVel) {
   let collisionPos = targetPos, time = null;
-  let targetSpeed = Math.sqrt(targetPos.map(n => n**2).reduce((a, b) => a+b));
   for (let i = 0; i < 5; i++) {
     time = Math.sqrt(collisionPos.map((n, idx) => (n-initPos[idx])**2).reduce((a, b) => a+b))/speed;
     collisionPos = targetPos.map((n, idx) => n+targetVel[idx]*time);
   }
   return [unit(collisionPos.map((n, idx) => n-initPos[idx])), collisionPos];
+}
+function distInDir(dirVec, init, pt) {
+  if (init === null) init = [0, 0, 0];
+  return dotProduct(unit(dirVec), pt.map((n, idx) => n-init[idx]));
 }
 
 let camFollow = null;
@@ -293,6 +296,7 @@ setInterval(function() {
     spawnShot();
   }
   plane.moveInDirection(1);
+  enemy.moveInDirection(1);
 
   for (let bullet of bullets) {
     bullet.moveInDirection(5);
@@ -301,6 +305,20 @@ setInterval(function() {
       bullets.splice(bullets.indexOf(bullet), 1);
       shapes.splice(shapes.indexOf(bullet), 1);
     }
+  }
+
+  let enemyRollSpeed = .1, enemyPitchSpeed = 0.03;
+  if (dotProduct(unit([enemy.localFrame.roll[1], enemy.localFrame.roll[2], enemy.localFrame.roll[0]]), unit(plane.offset.map((n, idx) => n-enemy.offset[idx]))) < .9999) {
+    let distSide = distInDir([enemy.localFrame.pitch[1], enemy.localFrame.pitch[2], enemy.localFrame.pitch[0]], enemy.offset, plane.offset);
+    let distVert = distInDir([enemy.localFrame.yaw[1], enemy.localFrame.yaw[2], enemy.localFrame.yaw[0]], enemy.offset, plane.offset);
+    let distFront = distInDir([enemy.localFrame.roll[1], enemy.localFrame.roll[2], enemy.localFrame.roll[0]], enemy.offset, plane.offset);
+    let angle = Math.atan2(distVert, distSide);
+    let vertAngle = Math.atan2(distVert, distFront);
+    if (Math.abs(angle-Math.PI/2) < enemyRollSpeed) {
+      enemy.update(angle-Math.PI/2, "roll");
+      enemy.update(Math.max(-enemyPitchSpeed,-vertAngle), "pitch")
+    } else if (distSide > 0) enemy.update(-enemyRollSpeed, "roll");
+    else if (distSide < 0) enemy.update(enemyRollSpeed, "roll");
   }
   let difference = performance.now()-lastTime;
   lastTime = performance.now();
@@ -321,8 +339,8 @@ fileInput.addEventListener("input", async function(e) {
   let reader = new FileReader();
   reader.readAsText(this.files[0])
   reader.onload = () => {
-    if (fileType === "obj") console.log(processObj(reader.result));
-    else if (fileType === "mtl") console.log(processMtl(reader.result));
+    if (fileType === "obj") shapes.push(processObj(reader.result));
+    else if (fileType === "mtl") processMtl(reader.result);
   }
 });*/
 
@@ -405,4 +423,10 @@ fetch("https://gosoccerboy5.github.io/plane-battle/assets/bullet.obj").then(res 
 fetch("https://gosoccerboy5.github.io/plane-battle/assets/map.obj").then(res => res.text()).then(obj => {
   map = processObj(obj);
   shapes.push(map);
+});
+fetch("https://gosoccerboy5.github.io/plane-battle/assets/enemy.obj").then(res => res.text()).then(obj => {
+  enemy = processObj(obj);
+  enemy.moveInDirection(150);
+  enemy.update(Math.PI, "yaw");
+  shapes.push(enemy);
 });
