@@ -1,5 +1,7 @@
 let [cos, sin] = [Math.cos.bind(Math), Math.sin.bind(Math)];
 
+let enemyVel = 1, planeVel = 1, rollSpeed = 0.07, pitchSpeed = 0.05, enemyRollSpeed = 0.1, enemyPitchSpeed = 0.03, aimAssistRange = Math.PI/12;
+
 class matrix {
   constructor(list) {
     this.list = list;
@@ -278,8 +280,6 @@ setInterval(function() {
 
 
   if (plane) camFollow = plane;
-  let rollSpeed = .07;
-  let pitchSpeed = .05;
   if (keys["arrowleft"] || keys["a"]) {
     plane.update(rollSpeed, "roll")
   }
@@ -295,8 +295,8 @@ setInterval(function() {
   if (keys[" "]) {
     spawnShot();
   }
-  plane.moveInDirection(1);
-  enemy.moveInDirection(1);
+  plane.moveInDirection(planeVel);
+  enemy.moveInDirection(enemyVel);
 
   for (let bullet of bullets) {
     bullet.moveInDirection(5);
@@ -307,7 +307,6 @@ setInterval(function() {
     }
   }
 
-  let enemyRollSpeed = .1, enemyPitchSpeed = 0.03;
   if (dotProduct(unit([enemy.localFrame.roll[1], enemy.localFrame.roll[2], enemy.localFrame.roll[0]]), unit(plane.offset.map((n, idx) => n-enemy.offset[idx]))) < .9999) {
     let distSide = distInDir([enemy.localFrame.pitch[1], enemy.localFrame.pitch[2], enemy.localFrame.pitch[0]], enemy.offset, plane.offset);
     let distVert = distInDir([enemy.localFrame.yaw[1], enemy.localFrame.yaw[2], enemy.localFrame.yaw[0]], enemy.offset, plane.offset);
@@ -389,9 +388,9 @@ function spawnShot() {
   shapes.push(shot);
   bullets.push(shot);
   if (enemy !== null) {
-    let lead = leadAim(plane.offset, enemy.offset, 5, [0, 0, 0]);
+    let lead = leadAim(plane.offset, enemy.offset, 5, [enemy.localFrame.roll[1], enemy.localFrame.roll[2], enemy.localFrame.roll[0]].map(n=>n*enemyVel));
     let currentAim = [plane.localFrame.roll[1], plane.localFrame.roll[2], plane.localFrame.roll[0]];
-    if (Math.acos(dotProduct(unit(lead[1].map((n, idx) => n-plane.offset[idx])), currentAim)) < Math.PI/8) {
+    if (Math.acos(dotProduct(unit(lead[1].map((n, idx) => n-plane.offset[idx])), currentAim)) < aimAssistRange) {
       shot.localFrame.roll = [lead[0][2], lead[0][0], lead[0][1]];
     }
   }
@@ -405,7 +404,7 @@ document.addEventListener("keyup", function(e) {
 	delete keys[e.key.toLowerCase()];
 });
 
-["bullet", "plane", "map"].forEach(name => {
+["bullet", "plane", "map", "enemy"].forEach(name => {
   fetch("https://gosoccerboy5.github.io/plane-battle/assets/" + name + ".mtl").then(res => res.text()).then(mtl => {
     processMtl(mtl);
   });
