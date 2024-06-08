@@ -1,6 +1,7 @@
 let [cos, sin] = [Math.cos.bind(Math), Math.sin.bind(Math)];
 
-let enemyVel = 1, planeVel = 1, rollSpeed = 0.07, pitchSpeed = 0.05, enemyRollSpeed = 0.1, enemyPitchSpeed = 0.03, aimAssistRange = Math.PI/12;
+let enemyVel = 1, planeVel = 1, rollSpeed = 0.07, pitchSpeed = 0.05, enemyRollSpeed = 0.1, enemyPitchSpeed = 0.03, aimAssistRange = Math.PI/24;
+let enemyLeadsAim = true;
 
 class matrix {
   constructor(list) {
@@ -293,13 +294,15 @@ setInterval(function() {
     plane.update(-pitchSpeed, "pitch")
   }
   if (keys[" "]) {
-    spawnShot();
+    spawnShot(plane, true);
   }
+  
   plane.moveInDirection(planeVel);
   enemy.moveInDirection(enemyVel);
 
   for (let bullet of bullets) {
     bullet.moveInDirection(5);
+    bullet.move([Math.random()-.5, Math.random()-.5, Math.random()-.5].map(n=>n*.2));
     bullet.distance += 5;
     if (bullet.distance > 200) {
       bullets.splice(bullets.indexOf(bullet), 1);
@@ -307,10 +310,12 @@ setInterval(function() {
     }
   }
 
-  if (dotProduct(unit([enemy.localFrame.roll[1], enemy.localFrame.roll[2], enemy.localFrame.roll[0]]), unit(plane.offset.map((n, idx) => n-enemy.offset[idx]))) < .9999) {
-    let distSide = distInDir([enemy.localFrame.pitch[1], enemy.localFrame.pitch[2], enemy.localFrame.pitch[0]], enemy.offset, plane.offset);
-    let distVert = distInDir([enemy.localFrame.yaw[1], enemy.localFrame.yaw[2], enemy.localFrame.yaw[0]], enemy.offset, plane.offset);
-    let distFront = distInDir([enemy.localFrame.roll[1], enemy.localFrame.roll[2], enemy.localFrame.roll[0]], enemy.offset, plane.offset);
+  let target = enemyLeadsAim ? leadAim(enemy.offset, plane.offset, 5, [plane.localFrame.roll[1], plane.localFrame.roll[2], plane.localFrame.roll[0]].map(n=>n*planeVel))[1] : plane.offset;
+  let overallAngle = dotProduct(unit([enemy.localFrame.roll[1], enemy.localFrame.roll[2], enemy.localFrame.roll[0]]), unit(target.map((n, idx) => n-enemy.offset[idx])));
+  if (overallAngle < .9999) {
+    let distSide = distInDir([enemy.localFrame.pitch[1], enemy.localFrame.pitch[2], enemy.localFrame.pitch[0]], enemy.offset, target);
+    let distVert = distInDir([enemy.localFrame.yaw[1], enemy.localFrame.yaw[2], enemy.localFrame.yaw[0]], enemy.offset, target);
+    let distFront = distInDir([enemy.localFrame.roll[1], enemy.localFrame.roll[2], enemy.localFrame.roll[0]], enemy.offset, target);
     let angle = Math.atan2(distVert, distSide);
     let vertAngle = Math.atan2(distVert, distFront);
     if (Math.abs(angle-Math.PI/2) < enemyRollSpeed) {
@@ -319,6 +324,7 @@ setInterval(function() {
     } else if (distSide > 0) enemy.update(-enemyRollSpeed, "roll");
     else if (distSide < 0) enemy.update(enemyRollSpeed, "roll");
   }
+  if (Math.acos(overallAngle) < aimAssistRange) spawnShot(enemy);
   let difference = performance.now()-lastTime;
   lastTime = performance.now();
 }, 20);
@@ -373,21 +379,21 @@ function processMtl(text) {
 }
 
 let bullets = [];
-function spawnShot() {
+function spawnShot(from, target=false) {
   let shot = new Shape([]);
   for (let poly of bullet.polys) {
     let newPoly = poly.map(pt => pt.map(n=>n));
     newPoly.mtl = poly.mtl;
     shot.polys.push(newPoly);
   }
-  shot.update(plane.rotate[0], "yaw");
-  shot.update(-plane.rotate[1], "pitch");
-  shot.move(plane.offset.map((n, idx) => n-shot.offset[idx]));
+  shot.update(from.rotate[0], "yaw");
+  shot.update(-from.rotate[1], "pitch");
+  shot.move(from.offset.map((n, idx) => n-shot.offset[idx]));
   shot.moveInDirection(2+Math.random()-.5);
   shot.distance = 0;
   shapes.push(shot);
   bullets.push(shot);
-  if (enemy !== null) {
+  if (target && enemy !== null) {
     let lead = leadAim(plane.offset, enemy.offset, 5, [enemy.localFrame.roll[1], enemy.localFrame.roll[2], enemy.localFrame.roll[0]].map(n=>n*enemyVel));
     let currentAim = [plane.localFrame.roll[1], plane.localFrame.roll[2], plane.localFrame.roll[0]];
     if (Math.acos(dotProduct(unit(lead[1].map((n, idx) => n-plane.offset[idx])), currentAim)) < aimAssistRange) {
