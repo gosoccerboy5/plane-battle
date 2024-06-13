@@ -1,6 +1,8 @@
 let [cos, sin] = [Math.cos.bind(Math), Math.sin.bind(Math)];
 
-let enemyVel = 1, planeVel = 1, rollSpeed = 0.07, pitchSpeed = 0.05, enemyRollSpeed = 0.1, enemyPitchSpeed = 0.03, aimAssistRange = Math.PI/24;
+let enemyVel = 1.5, planeVel = 1.5, rollSpeed = 0.1, pitchSpeed = 0.04, enemyRollSpeed = 0.1, enemyPitchSpeed = 0.03, aimAssistRange = Math.PI/24;
+let bulletVel = 5;
+let planeBaseVel = 1.5;
 let enemyLeadsAim = true;
 
 class matrix {
@@ -211,6 +213,7 @@ setInterval(function() {
   let yaw = matrix.from([[Math.cos(camAngle[0]), -Math.sin(camAngle[0]), 0], [Math.sin(camAngle[0]), Math.cos(camAngle[0]), 0], [0, 0, 1]]);
   let roll = matrix.from([[1, 0, 0], [0, Math.cos(camAngle[1]), -Math.sin(camAngle[1])], [0, Math.sin(camAngle[1]), Math.cos(camAngle[1])]]);
   let pitch = matrix.from([[Math.cos(camAngle[0]), 0, Math.sin(camAngle[0])], [0, 1, 0], [-Math.sin(camAngle[0]), 0, Math.cos(camAngle[0])]]);
+  let transformCamera = roll.multiply(pitch);
   points = []
 
   let renderList = [];
@@ -222,6 +225,9 @@ setInterval(function() {
     let transformCache = new Map();
     for (let poly of shape.polys) {
       let pts = poly.map(pt => [[pt[0]-shape.offset[0]], [pt[1]-shape.offset[1]], [pt[2]-shape.offset[2]]]);
+      /*let minDist = pts.reduce((a, b) => Math.min(a, Math.sqrt((b[0]-camPos[0])**2+(b[2]-camPos[2])**2)), Infinity);
+      if (minDist > 200) continue;*/
+
       let cross = poly.cross;
       /*if (shape.rotate.some(n => n !== 0)) {
         pts = pts.map(pt => (rotationY.multiply(rotationZ).multiply(rotationX).multiply(matrix.from(pt)).list));
@@ -235,7 +241,7 @@ setInterval(function() {
         if (transformCache.has(str)) {
           return transformCache.get(str)
         } else {
-          let transformed = roll.multiply(pitch).multiply(matrix.from([[pt[0]-camPos[0]+shape.offset[0]], [pt[1]-camPos[1]+shape.offset[1]], [pt[2]-camPos[2]+shape.offset[2]]])).list;
+          let transformed = transformCamera.multiply(matrix.from([[pt[0]-camPos[0]+shape.offset[0]], [pt[1]-camPos[1]+shape.offset[1]], [pt[2]-camPos[2]+shape.offset[2]]])).list;
           transformCache.set(str, transformed);
           return transformed;
         }
@@ -245,8 +251,8 @@ setInterval(function() {
           pts = pts.map(pt => pt[2] <= 0 ? [pt[0], pt[1], Math.abs(pt[2])*.1] : pt);
         } else continue;
       }
-      let centroid = center(pts)
-      if (centroid[2] > 200) continue;
+      let centroid = center(pts);
+      
       if (cameraDot > 0) dot = -dot;
       let rgb = null;
       if (poly.mtl in materials) rgb = materials[poly.mtl];
@@ -288,10 +294,10 @@ setInterval(function() {
     plane.update(-rollSpeed, "roll")
   }
   if (keys["arrowup"] || keys["w"]) {
-    plane.update(pitchSpeed*.7, "pitch")
+    plane.update(pitchSpeed*.7*(planeVel/planeBaseVel), "pitch")
   }
   if (keys["arrowdown"] || keys["s"]) {
-    plane.update(-pitchSpeed, "pitch")
+    plane.update(-pitchSpeed*(planeVel/planeBaseVel), "pitch")
   }
   if (keys[" "]) {
     spawnShot(plane, true);
@@ -299,19 +305,22 @@ setInterval(function() {
   
   plane.moveInDirection(planeVel);
   enemy.moveInDirection(enemyVel);
+  planeVel += Math.sin(plane.localFrame.roll[2] * -0.015);
+  planeVel += (planeBaseVel-planeVel)/50;
 
   for (let bullet of bullets) {
-    bullet.moveInDirection(5);
+    bullet.moveInDirection(bulletVel);
     bullet.move([Math.random()-.5, Math.random()-.5, Math.random()-.5].map(n=>n*.2));
-    bullet.distance += 5;
+    bullet.distance += bulletVel;
     if (bullet.distance > 200) {
       bullets.splice(bullets.indexOf(bullet), 1);
       shapes.splice(shapes.indexOf(bullet), 1);
     }
   }
 
-  let target = enemyLeadsAim ? leadAim(enemy.offset, plane.offset, 5, [plane.localFrame.roll[1], plane.localFrame.roll[2], plane.localFrame.roll[0]].map(n=>n*planeVel))[1] : plane.offset;
+  let target = enemyLeadsAim ? leadAim(enemy.offset, plane.offset, bulletVel*1.5, [plane.localFrame.roll[1], plane.localFrame.roll[2], plane.localFrame.roll[0]].map(n=>n*planeVel))[1] : plane.offset;
   let overallAngle = dotProduct(unit([enemy.localFrame.roll[1], enemy.localFrame.roll[2], enemy.localFrame.roll[0]]), unit(target.map((n, idx) => n-enemy.offset[idx])));
+  let totalDist = Math.sqrt(plane.offset.map((n, idx) => (n-enemy.offset[idx])**2).reduce((a, b) => a+b));
   if (overallAngle < .9999) {
     let distSide = distInDir([enemy.localFrame.pitch[1], enemy.localFrame.pitch[2], enemy.localFrame.pitch[0]], enemy.offset, target);
     let distVert = distInDir([enemy.localFrame.yaw[1], enemy.localFrame.yaw[2], enemy.localFrame.yaw[0]], enemy.offset, target);
@@ -324,10 +333,36 @@ setInterval(function() {
     } else if (distSide > 0) enemy.update(-enemyRollSpeed, "roll");
     else if (distSide < 0) enemy.update(enemyRollSpeed, "roll");
   }
-  if (Math.acos(overallAngle) < aimAssistRange) spawnShot(enemy);
+  if (totalDist < 50 && Math.acos(overallAngle) < aimAssistRange) spawnShot(enemy);
+
   let difference = performance.now()-lastTime;
   lastTime = performance.now();
+  drawText("FPS: " + Math.round(1000/difference), canvas.width-42, 10, 10, "black", "left");
 }, 20);
+
+let bullets = [];
+function spawnShot(from, target=false) {
+  let shot = new Shape([]);
+  for (let poly of bullet.polys) {
+    let newPoly = poly.map(pt => pt.map(n=>n));
+    newPoly.mtl = poly.mtl;
+    shot.polys.push(newPoly);
+  }
+  shot.update(from.rotate[0], "yaw");
+  shot.update(-from.rotate[1], "pitch");
+  shot.move(from.offset.map((n, idx) => n-shot.offset[idx]));
+  shot.moveInDirection(2+Math.random()-.5);
+  shot.distance = 0;
+  shapes.push(shot);
+  bullets.push(shot);
+  if (target && enemy !== null) {
+    let lead = leadAim(plane.offset, enemy.offset, bulletVel, [enemy.localFrame.roll[1], enemy.localFrame.roll[2], enemy.localFrame.roll[0]].map(n=>n*enemyVel));
+    let currentAim = [plane.localFrame.roll[1], plane.localFrame.roll[2], plane.localFrame.roll[0]];
+    if (Math.acos(dotProduct(unit(lead[1].map((n, idx) => n-plane.offset[idx])), currentAim)) < aimAssistRange) {
+      shot.localFrame.roll = [lead[0][2], lead[0][0], lead[0][1]];
+    }
+  }
+}
 
 
 canvas.addEventListener("mousemove", function(e) {
@@ -336,18 +371,28 @@ canvas.addEventListener("mousemove", function(e) {
 });
 canvas.addEventListener("click", function(e) {
   canvas.requestPointerLock();
-})
+});
 
-/*let fileInput = document.querySelector("input[type=file]");
-fileInput.addEventListener("input", async function(e) {
-  let fileType = this.files[0].name.match(/\.(\w+)$/)[1];
-  let reader = new FileReader();
-  reader.readAsText(this.files[0])
-  reader.onload = () => {
-    if (fileType === "obj") shapes.push(processObj(reader.result));
-    else if (fileType === "mtl") processMtl(reader.result);
-  }
-});*/
+function drawText(text, x, y, size=10, color="black", align="center") {
+  ctx.fillStyle = color;
+  ctx.textBaseline = "middle";
+  ctx.textAlign = align;
+  ctx.font = size + "px Arial";
+  ctx.fillText(text, x, y);
+}
+
+let fileInput = document.querySelector("input[type=file]");
+if (fileInput !== null) {
+  fileInput.addEventListener("input", async function(e) {
+    let fileType = this.files[0].name.match(/\.(\w+)$/)[1];
+    let reader = new FileReader();
+    reader.readAsText(this.files[0])
+    reader.onload = () => {
+      if (fileType === "obj") shapes.push(processObj(reader.result));
+      else if (fileType === "mtl") processMtl(reader.result);
+    }
+  });
+}
 
 function processObj(text) {
   let vertices = text.match(/\nv (.+?) (.+?) (.+)/g);
@@ -378,29 +423,6 @@ function processMtl(text) {
   }
 }
 
-let bullets = [];
-function spawnShot(from, target=false) {
-  let shot = new Shape([]);
-  for (let poly of bullet.polys) {
-    let newPoly = poly.map(pt => pt.map(n=>n));
-    newPoly.mtl = poly.mtl;
-    shot.polys.push(newPoly);
-  }
-  shot.update(from.rotate[0], "yaw");
-  shot.update(-from.rotate[1], "pitch");
-  shot.move(from.offset.map((n, idx) => n-shot.offset[idx]));
-  shot.moveInDirection(2+Math.random()-.5);
-  shot.distance = 0;
-  shapes.push(shot);
-  bullets.push(shot);
-  if (target && enemy !== null) {
-    let lead = leadAim(plane.offset, enemy.offset, 5, [enemy.localFrame.roll[1], enemy.localFrame.roll[2], enemy.localFrame.roll[0]].map(n=>n*enemyVel));
-    let currentAim = [plane.localFrame.roll[1], plane.localFrame.roll[2], plane.localFrame.roll[0]];
-    if (Math.acos(dotProduct(unit(lead[1].map((n, idx) => n-plane.offset[idx])), currentAim)) < aimAssistRange) {
-      shot.localFrame.roll = [lead[0][2], lead[0][0], lead[0][1]];
-    }
-  }
-}
 
 let keys = {};
 document.addEventListener("keydown", function(e) {
