@@ -7,11 +7,12 @@ let bulletVel = null;
 let planeBaseVel = null;
 let enemyLeadsAim = null;
 let mapBoundaries = null;
+let gameActive = false;
 
-let plane = null, enemy = null, map = null;
+let plane = null, enemy = null, map = null, fire = null;
 
 function resetValues() {
-  enemyVel = 1.5; planeVel = 1.5; rollSpeed = 0.1; pitchSpeed = 0.04; enemyRollSpeed = 0.05; enemyPitchSpeed = 0.03; aimAssistRange = Math.PI/24; bulletVel = 5; planeRadius = 1.8; hp = 100; enemyHP = 50; pain = 0;
+  enemyVel = 1.5; planeVel = 1.5; rollSpeed = 0.1; pitchSpeed = 0.04; enemyRollSpeed = 0.07; enemyPitchSpeed = 0.035; aimAssistRange = Math.PI/24; bulletVel = 5; planeRadius = 1.8; hp = 100; enemyHP = 100; pain = 0;
   planeBaseVel = 1.5;
   enemyLeadsAim = true;
   shapes = []; bullets = [];
@@ -26,6 +27,8 @@ function resetValues() {
   Math.min(...map.polys.map(poly => Math.min(...poly.map(pt => pt[0])))),
   Math.max(...map.polys.map(poly => Math.max(...poly.map(pt => pt[2])))),
   Math.min(...map.polys.map(poly => Math.min(...poly.map(pt => pt[2]))))];
+  gameActive = true;
+  camAngle = [0, 0];
 }
 
 class matrix {
@@ -338,13 +341,6 @@ setInterval(function() {
         rgb = rgb.map(n => n*(1-dot/3) + 1/7*dist);
         pts.mtl = `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
         pts.meanZ = Math.sqrt((centroid[0])**2+(centroid[1])**2+(centroid[2])**2);
-
-        if (shape === map) {
-          if (sphereHitsPoly(plane.offset, planeRadius, poly)) {
-            hp = 0;
-            pain += 1;
-          }
-        }
         renderList.push(pts);
       }
     }
@@ -364,68 +360,94 @@ setInterval(function() {
       ctx.stroke();
       ctx.fill();
     }
-
-    if (keys["arrowleft"] || keys["a"]) {
-      plane.update(rollSpeed, "roll")
-    }
-    if (keys["arrowright"] || keys["d"]) {
-      plane.update(-rollSpeed, "roll")
-    }
-    if (keys["arrowup"] || keys["w"]) {
-      plane.update(pitchSpeed*.7*(planeVel/planeBaseVel), "pitch")
-    }
-    if (keys["arrowdown"] || keys["s"]) {
-      plane.update(-pitchSpeed*(planeVel/planeBaseVel), "pitch")
-    }
-    if (keys[" "]) {
-      spawnShot(plane, true);
-    }
-    
-    plane.moveInDirection(planeVel);
-    enemy.moveInDirection(enemyVel);
-    planeVel += Math.sin(plane.localFrame.roll[2] * -0.015);
-    planeVel += (planeBaseVel-planeVel)/50;
-    if (plane.offset[0] > mapBoundaries[0] || plane.offset[0] < mapBoundaries[1] || plane.offset[2] > mapBoundaries[2] || 
-      plane.offset[2] < mapBoundaries[3]) {
-        hp -= 0.3;
-        pain += .052;
-        drawText(ctx, "Return to battlefield", canvas.width/2, 30, 30, "red", "center", "georgia");
+    if (gameActive) {
+      if (keys["arrowleft"] || keys["a"]) {
+        plane.update(rollSpeed, "roll")
+      }
+      if (keys["arrowright"] || keys["d"]) {
+        plane.update(-rollSpeed, "roll")
+      }
+      if (keys["arrowup"] || keys["w"]) {
+        plane.update(pitchSpeed*.7*(planeVel/planeBaseVel), "pitch")
+      }
+      if (keys["arrowdown"] || keys["s"]) {
+        plane.update(-pitchSpeed*(planeVel/planeBaseVel), "pitch")
+      }
+      if (keys[" "]) {
+        spawnShot(plane, true);
+      }
+      
+      plane.moveInDirection(planeVel);
+      enemy.moveInDirection(enemyVel);
+      let enemyAboutToCrash = false;
+      for (let poly of map.polys) {
+        if (sphereHitsPoly(plane.offset, planeRadius, poly)) {
+          hp = 0;
+          pain += 1;
+        }
+        if (sphereHitsPoly(enemy.offset, 1.8, poly)) {
+          enemyHP = 0;
+        }
+        if (!enemyAboutToCrash && sphereHitsPoly(enemy.offset.map((n, idx) => [enemy.localFrame.roll[1], enemy.localFrame.roll[2], enemy.localFrame.roll[0]][idx]*100+n), 20, poly)) {
+          enemyAboutToCrash = true;
+        }
       }
 
-    for (let bullet of bullets) {
-      bullet.moveInDirection(bulletVel);
-      bullet.distance += bulletVel;
-      if (distance(bullet.offset, plane.offset) < planeRadius) {
-        hp -= 5;
-        pain += 0.2;
-      }
-      if (distance(bullet.offset, enemy.offset) < planeRadius*2) {
-        enemyHP -= 5;
-        ctx.drawImage(hitMarker, canvas.width/2+100, canvas.height/2-25, 50, 50)
-      }
-      if (bullet.distance > 200 || distance(bullet.offset, enemy.offset) < planeRadius*2 || distance(bullet.offset, plane.offset) < planeRadius) {
-        bullets.splice(bullets.indexOf(bullet), 1);
-        shapes.splice(shapes.indexOf(bullet), 1);
-      }
-    }
+      planeVel += Math.sin(plane.localFrame.roll[2] * -0.015);
+      planeVel += (planeBaseVel-planeVel)/50;
+      if (plane.offset[0] > mapBoundaries[0] || plane.offset[0] < mapBoundaries[1] || plane.offset[2] > mapBoundaries[2] || 
+        plane.offset[2] < mapBoundaries[3]) {
+          hp -= 0.3;
+          pain += .052;
+          drawText(ctx, "Return to battlefield", canvas.width/2, 30, 30, "red", "center", "georgia");
+        }
 
-    let target = enemyLeadsAim ? leadAim(enemy.offset, plane.offset, bulletVel*1.5, [plane.localFrame.roll[1], plane.localFrame.roll[2], plane.localFrame.roll[0]].map(n=>n*planeVel))[1] : plane.offset;
-    let overallAngle = dotProduct(unit([enemy.localFrame.roll[1], enemy.localFrame.roll[2], enemy.localFrame.roll[0]]), unit(target.map((n, idx) => n-enemy.offset[idx])));
-    let totalDist = Math.sqrt(plane.offset.map((n, idx) => (n-enemy.offset[idx])**2).reduce((a, b) => a+b));
-    if (overallAngle < .9999) {
-      let distSide = distInDir([enemy.localFrame.pitch[1], enemy.localFrame.pitch[2], enemy.localFrame.pitch[0]], enemy.offset, target);
-      let distVert = distInDir([enemy.localFrame.yaw[1], enemy.localFrame.yaw[2], enemy.localFrame.yaw[0]], enemy.offset, target);
-      let distFront = distInDir([enemy.localFrame.roll[1], enemy.localFrame.roll[2], enemy.localFrame.roll[0]], enemy.offset, target);
-      let angle = Math.atan2(distVert, distSide);
-      let vertAngle = Math.atan2(distVert, distFront);
-      if (Math.abs(angle-Math.PI/2) < enemyRollSpeed) {
-        enemy.update(angle-Math.PI/2, "roll");
-        enemy.update(Math.max(-enemyPitchSpeed,-vertAngle), "pitch")
-      } else if (distSide > 0) enemy.update(-enemyRollSpeed, "roll");
-      else if (distSide < 0) enemy.update(enemyRollSpeed, "roll");
-    }
-    if (totalDist < 50 && Math.acos(overallAngle) < aimAssistRange) spawnShot(enemy);
+      for (let bullet of bullets) {
+        bullet.moveInDirection(bulletVel);
+        bullet.distance += bulletVel;
+        if (distance(bullet.offset, plane.offset) < planeRadius) {
+          hp -= 5;
+          pain += 0.2;
+        }
+        if (distance(bullet.offset, enemy.offset) < planeRadius*2) {
+          enemyHP -= 5;
+          ctx.drawImage(hitMarker, canvas.width/2+100, canvas.height/2-25, 50, 50)
+        }
+        if (bullet.distance > 200 || distance(bullet.offset, enemy.offset) < planeRadius*2 || distance(bullet.offset, plane.offset) < planeRadius) {
+          bullets.splice(bullets.indexOf(bullet), 1);
+          shapes.splice(shapes.indexOf(bullet), 1);
+        }
+      }
 
+      function perp(vec) {
+          if (vec[1] === 0) return [0, Math.abs(vec[0])/vec[0]]
+          return unit([1,-vec[0]/vec[1]])
+      }
+      if (enemyAboutToCrash) {
+        enemy.update(enemy.localFrame.yaw[2] > 0 ? -enemyPitchSpeed : enemyPitchSpeed, "pitch")
+        let perpendicular = perp([enemy.localFrame.roll[1], enemy.localFrame.roll[0]]);
+        let distSideways = distInDir([perpendicular[0], 0, perpendicular[1]], null, [enemy.localFrame.yaw[1], enemy.localFrame.yaw[2], enemy.localFrame.yaw[0]]);
+        if (distSideways > 0) {
+          enemy.update(enemyRollSpeed, "roll");
+        } else if (distSideways < 0) enemy.update(enemyRollSpeed, "roll")
+      } else {
+      let target = enemyLeadsAim ? leadAim(enemy.offset, plane.offset, bulletVel*1.5, [plane.localFrame.roll[1], plane.localFrame.roll[2], plane.localFrame.roll[0]].map(n=>n*planeVel))[1] : plane.offset;
+      let overallAngle = dotProduct(unit([enemy.localFrame.roll[1], enemy.localFrame.roll[2], enemy.localFrame.roll[0]]), unit(target.map((n, idx) => n-enemy.offset[idx])));
+      let totalDist = Math.sqrt(plane.offset.map((n, idx) => (n-enemy.offset[idx])**2).reduce((a, b) => a+b));
+      if (overallAngle < .9999) {
+        let distSide = distInDir([enemy.localFrame.pitch[1], enemy.localFrame.pitch[2], enemy.localFrame.pitch[0]], enemy.offset, target);
+        let distVert = distInDir([enemy.localFrame.yaw[1], enemy.localFrame.yaw[2], enemy.localFrame.yaw[0]], enemy.offset, target);
+        let distFront = distInDir([enemy.localFrame.roll[1], enemy.localFrame.roll[2], enemy.localFrame.roll[0]], enemy.offset, target);
+        let angle = Math.atan2(distVert, distSide);
+        let vertAngle = Math.atan2(distVert, distFront);
+        if (Math.abs(angle-Math.PI/2) < enemyRollSpeed) {
+          enemy.update(angle-Math.PI/2, "roll");
+          enemy.update(Math.max(-enemyPitchSpeed,-vertAngle), "pitch")
+        } else if (distSide > 0) enemy.update(-enemyRollSpeed, "roll");
+        else if (distSide < 0) enemy.update(enemyRollSpeed, "roll");
+      }
+      if (totalDist < 50 && Math.acos(overallAngle) < aimAssistRange) spawnShot(enemy);}
+    }
     let difference = performance.now()-lastTime;
     lastTime = performance.now();
     drawText(ctx, "FPS: " + Math.round(1000/difference), canvas.width-57, canvas.height-12, 15, "black", "left");
@@ -441,10 +463,40 @@ setInterval(function() {
     ctx.fillStyle = hpColor;
     ctx.roundRect(canvas.width-100, 20, Math.max(80*hp/100, 2), 10, 5);
     ctx.fill();
-    pain = Math.min(pain, .4);
-    ctx.fillStyle = `rgba(255, 0, 0, ${pain})`;
+    pain = gameActive ? Math.min(pain, .4) : pain;
+    ctx.fillStyle = pain >= 0 ? `rgba(255, 0, 0, ${pain})` : `rgba(0, 255, 0, ${-pain})`;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    pain = Math.max(pain-0.05, 0);
+    pain = gameActive ? Math.max(pain-0.05, 0) : pain;
+
+    if (gameActive) {
+      if (hp <= 0) {
+        fire = copyShape(fireTemplate);
+        fire.move(minus(plane.offset, fire.offset))
+        shapes.push(fire); gameActive = false; resume.visible = false;
+        pain = .4;
+      }
+      if (enemyHP <= 0) {
+        fire = copyShape(fireTemplate);
+        fire.move(minus(enemy.offset, fire.offset));
+        shapes.push(fire); gameActive = false; resume.visible = false;
+        pain = 0;
+      }
+    } else {
+      if (hp <= 0) {
+        pain += 0.01;
+        ctx.globalAlpha = Math.min(pain, .8);
+        drawText(ctx, "You Died!", canvas.width/2, 30, 50, "black", "center", "Georgia");
+        ctx.globalAlpha = 1;
+        if (pain >= 1) {gameState = "menu"; document.exitPointerLock();}
+      }
+      if (enemyHP <= 0) {
+        pain -= 0.02;
+        ctx.globalAlpha = -Math.max(pain, -.8);
+        drawText(ctx, "You Win!", canvas.width/2, 30, 50, "black", "center", "Georgia");
+        ctx.globalAlpha = 1;
+        if (pain <= -1) {gameState = "menu"; document.exitPointerLock();}
+      }
+    }    
   }
   canvas.style.cursor = "auto";
   if (gameState === "paused") {
@@ -482,7 +534,7 @@ setInterval(function() {
       ctx.fillText("Plane Battle", canvas.width/2, 90);*/
     }
     for (let button of Button.buttons) {
-      if (button.props.targetScreen === gameState) {
+      if (button.visible && button.props.targetScreen === gameState) {
         button.draw();
         if (mouseDown && button.isHovering(mouseX, mouseY)) button.props.event();
       }
@@ -564,14 +616,16 @@ let play = new Button(40, 72.5, 15, 10, "rgb(150, 150, 150)", {value:"Begin Miss
   if (document.pointerLockElement === canvas) {
     resetValues();
     gameState = "playing";
-    let resume = new Button(40, 60, 15, 10, "rgb(150, 150, 150)", {value:"Resume Mission", font:"Courier, monospace", size:20}, "menu", async function() {
-      await canvas.requestPointerLock();
-      if (document.pointerLockElement === canvas) {
-        gameState = "playing";
-      }
-    });
+    resume.visible = true;
   }
 });
+let resume = new Button(40, 60, 15, 10, "rgb(150, 150, 150)", {value:"Resume Mission", font:"Courier, monospace", size:20}, "menu", async function() {
+  await canvas.requestPointerLock();
+  if (document.pointerLockElement === canvas) {
+    gameState = "playing";
+  }
+});
+resume.visible = false;
 let credits = new Button(28.5, 85, 15, 10, "rgb(150, 150, 150)", {value:"Credits", font:"Courier, monospace", size:20}, "menu", function() {
   gameState = "credits";
   mouseDown = false;
@@ -626,14 +680,14 @@ function copyShape(shape) {
   return newShape;
 }
 
-function processObj(text) {
+function processObj(text, pepoe) {
   let vertices = text.match(/\nv (.+?) (.+?) (.+)/g);
   vertices = vertices.map(vertex => vertex.match(/ ([-\.\d]+)/g).map(Number));
   let shape = new Shape([]);
-  let materialSections = text.match(/(usemtl .+?)\n((?!usemtl).+?\n?)+/g) || [text];
+  let materialSections = text.match(/(usemtl .+)(\n|\r)+((?!usemtl).+?(\n|\r)?)+/g) || [text];
   for (let materialSection of materialSections) {
-    let mtl = materialSection.match(/usemtl (.+)\n/)?.[1];
-    let polys = materialSection.match(/\nf (\d+\/\d+\/\d+ ?)+/g);
+    let mtl = materialSection.match(/usemtl (.+)(\n|\r)/)?.[1];
+    let polys = materialSection.match(/(\n|\r)f (\d+\/\d+\/\d+ ?)+/g);
 
     for (let poly of polys) {
       let pts = poly.match(/ \d+/g).map(pt => vertices[Number(pt)-1].map(n=>n));
@@ -647,7 +701,7 @@ function processObj(text) {
 }
 let materials = {};
 function processMtl(text) {
-  let mtls = text.match(/[\n^] *newmtl (.+)\n(.*?\n){8}/g);
+  let mtls = text.match(/[\n^]*newmtl ((.+)\n)+/g);
   for (let material of mtls) {
     let name = material.match(/[\n^] *newmtl (.+)\n/)[1];
     let color = material.match(/\n *Kd ((\d\.?\d*[ \n]){3})/)[1].split(" ").map(n=>256*Number(n));
@@ -666,15 +720,15 @@ document.addEventListener("keyup", function(e) {
 	delete keys[e.key.toLowerCase()];
 });
 
-["bullet", "plane", "map", "enemy"].forEach(name => {
+["bullet", "plane", "map", "enemy", "fire"].forEach(name => {
   fetch("assets/" + name + ".mtl").then(res => res.text()).then(mtl => {
     processMtl(mtl);
   });
 });
 
-let planeTemplate = null, mapTemplate = null, bullet = null, enemyTemplate = null;
+let planeTemplate = null, mapTemplate = null, bullet = null, enemyTemplate = null, fireTemplate = null;
 Object.defineProperty(window, "isLoading", {
-  get() {return [planeTemplate, mapTemplate, bullet, enemyTemplate].some(template => template === null);},
+  get() {return [planeTemplate, mapTemplate, bullet, enemyTemplate, fireTemplate].some(template => template === null);},
 });
 
 fetch("assets/plane.obj").then(res => res.text()).then(obj => {
@@ -691,5 +745,9 @@ fetch("assets/map.obj").then(res => res.text()).then(obj => {
 });
 fetch("assets/enemy.obj").then(res => res.text()).then(obj => {
   enemyTemplate = processObj(obj);
+  if (!isLoading) resetValues();
+});
+fetch("assets/fire.obj").then(res => res.text()).then(obj => {
+  fireTemplate = processObj(obj, true);
   if (!isLoading) resetValues();
 });
