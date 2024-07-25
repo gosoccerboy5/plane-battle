@@ -522,7 +522,7 @@ setInterval(function() {
     gameState = "menu";
     document.exitPointerLock();
   }
-  if (gameState === "menu" || gameState === "credits") {
+  if (gameState === "menu" || gameState === "credits" || gameState === "instructions") {
     clear(canvas);
     ctx.fillStyle = "lightblue";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -545,7 +545,15 @@ setInterval(function() {
     drawText(ctx, "Credits", canvas.width/2, 30, 40, "black", "center", "Helvetica");
     drawText(ctx, "Valley Terrain by Zsky [CC-BY] (https://creativecommons.org/licenses/by/3.0/)", canvas.width/2, 70, 20, "black", "center", "Verdana");
     drawText(ctx, "via Poly Pizza (https://poly.pizza/m/u78ByZHYB2); modified", canvas.width/2, 92, 20, "black", "center", "Verdana");
-    drawText(ctx, "Rotations code by Mike 'Pomax' Kamermans (https://stackoverflow.com/a/78518869/15938577)", canvas.width/2, 120, 20, "black", "center", "Verdana");
+    drawText(ctx, "Fire by Jakob Hippe [CC-BY] (https://poly.pizza/m/1QpMTUO7P-G)", canvas.width/2, 120, 20, "black", "center", "verdana");
+    drawText(ctx, "Rotations code by Mike 'Pomax' Kamermans (https://stackoverflow.com/a/78518869/15938577)", canvas.width/2, 148, 20, "black", "center", "Verdana");
+  }
+  if (gameState === "instructions") {
+    drawText(ctx, "Instructions", canvas.width/2, 30, 40, "black", "center", "Helvetica");
+    drawText(ctx, "Use WASD to turn and aim your plane and space to shoot", canvas.width/2, 70, 20, "black", "center", "Trebuchet MS");
+    drawText(ctx, "Use mouse to turn camera", canvas.width/2, 98, 20, "black", "center", "Trebuchet MS");
+    drawText(ctx, "Shoot the enemy and avoid their shots", canvas.width/2, 126, 20, "black", "center", "Trebuchet MS");
+    drawText(ctx, "And don't crash!", canvas.width/2, 154, 20, "black", "center", "Trebuchet MS");
   }
 }, 20);
 
@@ -626,18 +634,26 @@ let resume = new Button(40, 60, 15, 10, "rgb(150, 150, 150)", {value:"Resume Mis
   }
 });
 resume.visible = false;
-let credits = new Button(28.5, 85, 15, 10, "rgb(150, 150, 150)", {value:"Credits", font:"Courier, monospace", size:20}, "menu", function() {
+let credits = new Button(51.5, 85, 15, 10, "rgb(150, 150, 150)", {value:"Credits", font:"Courier, monospace", size:20}, "menu", function() {
   gameState = "credits";
   mouseDown = false;
 });
-let github = new Button(52.5, 85, 15, 10, "rgb(150, 150, 150)", {value:"Github", font:"Courier, monospace", size:20}, "menu", function() {
+let instructions = new Button(29.5, 85, 15, 10, "rgb(150, 150, 150)", {value:"Instructions", font:"Courier, monospace", size:20}, "menu", function() {
+  gameState = "instructions";
+  mouseDown = false;
+});
+let github = new Button(87, 88, 12, 10, "rgb(150, 150, 150)", {value:"Github", font:"Courier, monospace", size:20}, "menu", function() {
   let link = document.createElement("a");
   link.href = "https://github.com/gosoccerboy5/plane-battle";
   link.target = "_blank";
   link.click();
   mouseDown = false;
 });
-let backhome = new Button(40, 70, 15, 10, "rgb(150, 150, 150)", {value:"Home", font:"Courier, monospace", size:20}, "credits", function() {
+let backhome = new Button(42.5, 70, 15, 10, "rgb(150, 150, 150)", {value:"Home", font:"Courier, monospace", size:20}, "credits", function() {
+  gameState = "menu";
+  mouseDown = false;
+});
+let backhome2 = new Button(42.5, 70, 15, 10, "rgb(150, 150, 150)", {value:"Home", font:"Courier, monospace", size:20}, "instructions", function() {
   gameState = "menu";
   mouseDown = false;
 });
