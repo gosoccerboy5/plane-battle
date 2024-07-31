@@ -26,7 +26,8 @@ function resetValues() {
   mapBoundaries = [Math.max(...map.polys.map(poly => Math.max(...poly.map(pt => pt[0])))), 
   Math.min(...map.polys.map(poly => Math.min(...poly.map(pt => pt[0])))),
   Math.max(...map.polys.map(poly => Math.max(...poly.map(pt => pt[2])))),
-  Math.min(...map.polys.map(poly => Math.min(...poly.map(pt => pt[2]))))];
+  Math.min(...map.polys.map(poly => Math.min(...poly.map(pt => pt[2])))),
+  Math.max(...map.polys.map(poly => Math.max(...poly.map(pt => pt[1]))))];
   gameActive = true;
   camAngle = [0, 0];
 }
@@ -381,6 +382,10 @@ setInterval(function() {
       plane.moveInDirection(planeVel);
       enemy.moveInDirection(enemyVel);
       let enemyAboutToCrash = false;
+      if (enemy.offset[0] > mapBoundaries[0] || enemy.offset[0] < mapBoundaries[1] || enemy.offset[2] > mapBoundaries[2] || 
+      enemy.offset[2] < mapBoundaries[3]) {
+        if (enemy.offset[1] < mapBoundaries[4]) enemyAboutToCrash = true;
+      }
       for (let poly of map.polys) {
         if (sphereHitsPoly(plane.offset, planeRadius, poly)) {
           hp = 0;
@@ -397,12 +402,12 @@ setInterval(function() {
       planeVel += Math.sin(plane.localFrame.roll[2] * -0.015);
       planeVel += (planeBaseVel-planeVel)/50;
       if (plane.offset[0] > mapBoundaries[0] || plane.offset[0] < mapBoundaries[1] || plane.offset[2] > mapBoundaries[2] || 
-        plane.offset[2] < mapBoundaries[3]) {
-          hp -= 0.01;
-          pain += .052;
-          drawText(ctx, "Return to battlefield", canvas.width/2, 30, 30, "red", "center", "georgia");
-        }
-
+      plane.offset[2] < mapBoundaries[3]) {
+        hp -= 0.03;
+        pain += .052;
+        drawText(ctx, "Return to battlefield", canvas.width/2, 30, 30, "red", "center", "georgia");
+      }
+      
       for (let bullet of bullets) {
         bullet.moveInDirection(bulletVel);
         bullet.distance += bulletVel;
@@ -425,7 +430,7 @@ setInterval(function() {
           return unit([1,-vec[0]/vec[1]])
       }
       if (enemyAboutToCrash) {
-        enemy.update(enemyPitchSpeed * 1.75 * (enemy.localFrame.yaw[2] > 0 ? -1 : 1), "pitch")
+        enemy.update(enemyPitchSpeed * 1.25 * (enemy.localFrame.yaw[2] > 0 ? -1 : 1), "pitch")
         let perpendicular = perp([enemy.localFrame.roll[1], enemy.localFrame.roll[0]]);
         let distSideways = distInDir([perpendicular[0], 0, perpendicular[1]], null, [enemy.localFrame.yaw[1], enemy.localFrame.yaw[2], enemy.localFrame.yaw[0]]);
         if (distSideways !== 0) {
