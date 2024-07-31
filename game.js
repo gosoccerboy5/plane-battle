@@ -16,7 +16,7 @@ function resetValues() {
   planeBaseVel = 1.5;
   enemyLeadsAim = true;
   shapes = []; bullets = [];
-  plane = copyShape(planeTemplate); shapes.push(plane);
+  plane = copyShape(planeTemplate); shapes.push(plane); plane.move([0, 10, 0]);
   map = copyShape(mapTemplate); shapes.push(map);
   enemy = copyShape(enemyTemplate); 
   enemy.moveInDirection(150);
@@ -230,7 +230,8 @@ let shapes = [];
 let canvas = document.querySelector("#canvas");
 let ctx = canvas.getContext("2d");
 canvas.width = window.innerWidth;
-canvas.height = window.innerHeight-3;
+canvas.height = window.innerHeight;
+canvas.height = Number(getComputedStyle(document.body).height.replace("px", ""));
 if (ctx.roundRect === undefined) ctx.roundRect = ctx.rect;
 
 
@@ -388,7 +389,7 @@ setInterval(function() {
         if (sphereHitsPoly(enemy.offset, 1.8, poly)) {
           enemyHP = 0;
         }
-        if (!enemyAboutToCrash && sphereHitsPoly(enemy.offset.map((n, idx) => [enemy.localFrame.roll[1], enemy.localFrame.roll[2], enemy.localFrame.roll[0]][idx]*100+n), 20, poly)) {
+        if (!enemyAboutToCrash && sphereHitsPoly(enemy.offset.map((n, idx) => [enemy.localFrame.roll[1], enemy.localFrame.roll[2], enemy.localFrame.roll[0]][idx]*50+n), 30, poly)) {
           enemyAboutToCrash = true;
         }
       }
@@ -397,7 +398,7 @@ setInterval(function() {
       planeVel += (planeBaseVel-planeVel)/50;
       if (plane.offset[0] > mapBoundaries[0] || plane.offset[0] < mapBoundaries[1] || plane.offset[2] > mapBoundaries[2] || 
         plane.offset[2] < mapBoundaries[3]) {
-          hp -= 0.3;
+          hp -= 0.01;
           pain += .052;
           drawText(ctx, "Return to battlefield", canvas.width/2, 30, 30, "red", "center", "georgia");
         }
@@ -409,11 +410,11 @@ setInterval(function() {
           hp -= 5;
           pain += 0.2;
         }
-        if (distance(bullet.offset, enemy.offset) < planeRadius*2) {
+        if (distance(bullet.offset, enemy.offset) < planeRadius*1.5) {
           enemyHP -= 5;
-          ctx.drawImage(hitMarker, canvas.width/2+100, canvas.height/2-25, 50, 50)
+          ctx.drawImage(hitMarker, canvas.width/2+100, canvas.height/2-25, 50, 50);
         }
-        if (bullet.distance > 200 || distance(bullet.offset, enemy.offset) < planeRadius*2 || distance(bullet.offset, plane.offset) < planeRadius) {
+        if (bullet.distance > 200 || distance(bullet.offset, enemy.offset) < planeRadius * 1.5 || distance(bullet.offset, plane.offset) < planeRadius) {
           bullets.splice(bullets.indexOf(bullet), 1);
           shapes.splice(shapes.indexOf(bullet), 1);
         }
@@ -424,12 +425,13 @@ setInterval(function() {
           return unit([1,-vec[0]/vec[1]])
       }
       if (enemyAboutToCrash) {
-        enemy.update(enemy.localFrame.yaw[2] > 0 ? -enemyPitchSpeed : enemyPitchSpeed, "pitch")
+        enemy.update(enemyPitchSpeed * 1.75 * (enemy.localFrame.yaw[2] > 0 ? -1 : 1), "pitch")
         let perpendicular = perp([enemy.localFrame.roll[1], enemy.localFrame.roll[0]]);
         let distSideways = distInDir([perpendicular[0], 0, perpendicular[1]], null, [enemy.localFrame.yaw[1], enemy.localFrame.yaw[2], enemy.localFrame.yaw[0]]);
-        if (distSideways > 0) {
-          enemy.update(enemyRollSpeed, "roll");
-        } else if (distSideways < 0) enemy.update(enemyRollSpeed, "roll")
+        if (distSideways !== 0) {
+          if (distSideways > 0 === enemy.localFrame.roll[0] > 0) 
+          enemy.update(enemyRollSpeed, "roll"); else enemy.update(-enemyRollSpeed, "roll");
+        }
       } else {
       let target = enemyLeadsAim ? leadAim(enemy.offset, plane.offset, bulletVel*1.5, [plane.localFrame.roll[1], plane.localFrame.roll[2], plane.localFrame.roll[0]].map(n=>n*planeVel))[1] : plane.offset;
       let overallAngle = dotProduct(unit([enemy.localFrame.roll[1], enemy.localFrame.roll[2], enemy.localFrame.roll[0]]), unit(target.map((n, idx) => n-enemy.offset[idx])));
@@ -485,14 +487,14 @@ setInterval(function() {
       if (hp <= 0) {
         pain += 0.01;
         ctx.globalAlpha = Math.min(pain, .8);
-        drawText(ctx, "You Died!", canvas.width/2, 30, 50, "black", "center", "Georgia");
+        drawText(ctx, "You Died!", canvas.width/2, 50, 50, "black", "center", "Georgia");
         ctx.globalAlpha = 1;
         if (pain >= 1) {gameState = "menu"; document.exitPointerLock();}
       }
       if (enemyHP <= 0) {
         pain -= 0.02;
         ctx.globalAlpha = -Math.max(pain, -.8);
-        drawText(ctx, "You Win!", canvas.width/2, 30, 50, "black", "center", "Georgia");
+        drawText(ctx, "You Win!", canvas.width/2, 50, 50, "black", "center", "Georgia");
         ctx.globalAlpha = 1;
         if (pain <= -1) {gameState = "menu"; document.exitPointerLock();}
       }
@@ -527,7 +529,8 @@ setInterval(function() {
     ctx.fillStyle = "lightblue";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     if (gameState === "menu") {
-      ctx.drawImage(thumbnail, canvas.width/2-thumbnail.width/2-(mouseX-50)/2, canvas.height/2-thumbnail.height/2-(mouseY-50)/2, thumbnail.width, thumbnail.height);
+      let [width, height] = [getComputedStyle(canvas).width.replace("px", ""), getComputedStyle(canvas).height.replace("px", "")].map(Number);
+      ctx.drawImage(thumbnail, width/2-(width+50)/2-(mouseX-50)/2, height/2 - (height+50)/2-(mouseY-50)/2, width+50, height+50);
       ctx.drawImage(logo, canvas.width/2-logo.width/2, 30, logo.width, logo.height);
       /*ctx.font = "bold 60px Arial";
       ctx.fillStyle = "rgb(0, 0, 0, .7)";
@@ -696,7 +699,7 @@ function copyShape(shape) {
   return newShape;
 }
 
-function processObj(text, pepoe) {
+function processObj(text) {
   let vertices = text.match(/\nv (.+?) (.+?) (.+)/g);
   vertices = vertices.map(vertex => vertex.match(/ ([-\.\d]+)/g).map(Number));
   let shape = new Shape([]);
@@ -764,6 +767,6 @@ fetch("assets/enemy.obj").then(res => res.text()).then(obj => {
   if (!isLoading) resetValues();
 });
 fetch("assets/fire.obj").then(res => res.text()).then(obj => {
-  fireTemplate = processObj(obj, true);
+  fireTemplate = processObj(obj);
   if (!isLoading) resetValues();
 });
