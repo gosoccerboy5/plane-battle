@@ -2,7 +2,7 @@ let [cos, sin] = [Math.cos.bind(Math), Math.sin.bind(Math)];
 
 let gameState = "menu";
 
-let enemyVel = null, planeVel = null, rollSpeed = null, pitchSpeed = null, enemyRollSpeed = null, enemyPitchSpeed = null, aimAssistRange = null, planeRadius = null, hp = null, enemyHP = null, pain = null;
+let enemyVel = null, planeVel = null, rollSpeed = null, pitchSpeed = null, enemyRollSpeed = null, enemyPitchSpeed = null, aimAssistRange = null, planeRadius = null, hp = null, enemyHP = null, pain = null, camLock = null, transitioningCamLock = null, FOVFactor = null;
 let bulletVel = null;
 let planeBaseVel = null;
 let enemyLeadsAim = null;
@@ -12,7 +12,7 @@ let gameActive = false;
 let plane = null, enemy = null, map = null, fire = null;
 
 function resetValues() {
-  enemyVel = 1.5; planeVel = 1.5; rollSpeed = 0.1; pitchSpeed = 0.04; enemyRollSpeed = 0.07; enemyPitchSpeed = 0.035; aimAssistRange = Math.PI/24; bulletVel = 5; planeRadius = 1.8; hp = 100; enemyHP = 100; pain = 0;
+  enemyVel = 2; planeVel = 2; rollSpeed = 0.1; pitchSpeed = 0.04; enemyRollSpeed = 0.07; enemyPitchSpeed = 0.035; aimAssistRange = Math.PI/24; bulletVel = 5; planeRadius = 1.8; hp = 100; enemyHP = 100; pain = 0; camLock = false; transitioningCamLock = 0; FOVFactor = 1;
   planeBaseVel = 1.5;
   enemyLeadsAim = true;
   shapes = []; bullets = [];
@@ -29,7 +29,7 @@ function resetValues() {
   Math.min(...map.polys.map(poly => Math.min(...poly.map(pt => pt[2])))),
   Math.max(...map.polys.map(poly => Math.max(...poly.map(pt => pt[1]))))];
   gameActive = true;
-  camAngle = [0, 0];
+  camAngle = [0, 0, 0];
 }
 
 class matrix {
@@ -162,7 +162,7 @@ function minus(pt1, pt2) {
   return pt1.map((n, idx) => n-pt2[idx]);
 }
 function angleBetween(pt1, center, pt2) {
-  return Math.acos(dotProduct(unit(minus(pt1, center)), unit(minus(pt2, center))))
+  return Math.acos(Math.max(Math.min(1, dotProduct(unit(minus(pt1, center)), unit(minus(pt2, center)))), -1));
 }
 function center(list) {
   return list.reduce((a, b) => a.map((el, idx) => el+b[idx]/list.length), [0,0,0]);
@@ -242,10 +242,10 @@ function circle(x, y, radius) {
   ctx.closePath();
 }
 
-let camAngle = [0, 0], camPos = [0, 0, 0];
+let camAngle = [0, 0, 0], camPos = [0, 0, 0];
 
 function project(point) {
-  return [point[0]/(point[2])*canvas.width/2.5+canvas.width/2, -point[1]/Math.abs(point[2])*canvas.height/1.8+canvas.height/2, Math.max(10/point[2], 0)];
+  return [point[0]/(point[2])*canvas.width/FOVFactor/2.5+canvas.width/2, -point[1]/Math.abs(point[2])*canvas.height/FOVFactor/1.8+canvas.height/2, Math.max(10/point[2], 0)];
 }
 function clear(canvas) {
 	let ctx = canvas.getContext("2d");
@@ -288,15 +288,49 @@ setInterval(function() {
         camPos[0] += Math.cos(-camAngle[0]) * cameraSpeed;
       }
     } else {
-      camPos[0] = camFollow.offset[0] + Math.sin(camAngle[0]) * cameraDistance * Math.cos(camAngle[1]);
-      camPos[1] = camFollow.offset[1] - Math.sin(camAngle[1]) * cameraDistance + cameraDistance/5;
-      camPos[2] = camFollow.offset[2] - Math.cos(camAngle[0]) * cameraDistance * Math.cos(camAngle[1]);
+      if (keys["c"]) {camLock = !camLock; delete keys["c"]; transitioningCamLock = 5;}
+      if (keys["i"]) FOVFactor *= .95;
+      if (keys["o"]) FOVFactor /= .95;
+
+      if (camLock) {
+        if (transitioningCamLock > 0) {
+          camAngle[0] += (-plane.rotate[0]-camAngle[0]) * .6;
+          camAngle[1] += (plane.rotate[1]-camAngle[1]) * .6;
+        } else {
+          camAngle[0] = -plane.rotate[0];
+          camAngle[1] = plane.rotate[1];
+        }
+        let idealUpwardVector = [Math.sin(plane.rotate[0])*Math.cos(plane.rotate[1]+Math.PI/2), Math.sin(plane.rotate[1]+Math.PI/2), Math.cos(plane.rotate[0])*Math.cos(plane.rotate[1]+Math.PI/2)];
+        let forward = [plane.localFrame.roll[1], plane.localFrame.roll[2], plane.localFrame.roll[0]];
+        let sideways = [plane.localFrame.pitch[1], plane.localFrame.pitch[2], plane.localFrame.pitch[0]];
+        let up = [plane.localFrame.yaw[1], plane.localFrame.yaw[2], plane.localFrame.yaw[0]];
+
+        let flatRight = [forward[2], -forward[0]], flatUp = [up[0], up[2]];
+
+        if (transitioningCamLock > 0) {
+          camAngle[2] += (angleBetween(up, [0, 0, 0], idealUpwardVector) * (distInDir(flatRight, [0, 0], flatUp) >= 0 ? 1 : -1) - camAngle[2]) * .6;
+        } else {
+          camAngle[2] = angleBetween(up, [0, 0, 0], idealUpwardVector) * (distInDir(flatRight, [0, 0], flatUp) >= 0 ? 1 : -1);
+        }
+        transitioningCamLock -= 1;
+        let upCamOffset = unit(up).map(n => n*cameraDistance/5);
+        let sidewaysOffset = unit(sideways).map(n => n*cameraDistance/10);
+        upCamOffset = upCamOffset.map((n, idx) => n+sidewaysOffset[idx]);
+        camPos[0] = camFollow.offset[0] + Math.sin(camAngle[0]) * cameraDistance/2 * Math.cos(camAngle[1]) + upCamOffset[0];
+        camPos[1] = camFollow.offset[1] - Math.sin(camAngle[1]) * cameraDistance/2 + upCamOffset[1];
+        camPos[2] = camFollow.offset[2] - Math.cos(camAngle[0]) * cameraDistance/2 * Math.cos(camAngle[1]) + upCamOffset[2];
+      } else {
+        camAngle[2] *= 0.5;
+        camPos[0] = camFollow.offset[0] + Math.sin(camAngle[0]) * cameraDistance * Math.cos(camAngle[1]);
+        camPos[1] = camFollow.offset[1] - Math.sin(camAngle[1]) * cameraDistance + cameraDistance/5;
+        camPos[2] = camFollow.offset[2] - Math.cos(camAngle[0]) * cameraDistance * Math.cos(camAngle[1]);
+      }
     }
 
-    let yaw = matrix.from([[Math.cos(camAngle[0]), -Math.sin(camAngle[0]), 0], [Math.sin(camAngle[0]), Math.cos(camAngle[0]), 0], [0, 0, 1]]);
+    let yaw = matrix.from([[Math.cos(camAngle[2]), -Math.sin(camAngle[2]), 0], [Math.sin(camAngle[2]), Math.cos(camAngle[2]), 0], [0, 0, 1]]);
     let roll = matrix.from([[1, 0, 0], [0, Math.cos(camAngle[1]), -Math.sin(camAngle[1])], [0, Math.sin(camAngle[1]), Math.cos(camAngle[1])]]);
     let pitch = matrix.from([[Math.cos(camAngle[0]), 0, Math.sin(camAngle[0])], [0, 1, 0], [-Math.sin(camAngle[0]), 0, Math.cos(camAngle[0])]]);
-    let transformCamera = roll.multiply(pitch);
+    let transformCamera = yaw.multiply(roll).multiply(pitch);
     points = []
 
     let renderList = [];
@@ -470,6 +504,7 @@ setInterval(function() {
     ctx.fillStyle = hpColor;
     ctx.roundRect(canvas.width-100, 20, Math.max(80*hp/100, 2), 10, 5);
     ctx.fill();
+
     pain = gameActive ? Math.min(pain, .4) : pain;
     ctx.fillStyle = pain >= 0 ? `rgba(255, 0, 0, ${pain})` : `rgba(0, 255, 0, ${-pain})`;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -537,9 +572,6 @@ setInterval(function() {
       let [width, height] = [getComputedStyle(canvas).width.replace("px", ""), getComputedStyle(canvas).height.replace("px", "")].map(Number);
       ctx.drawImage(thumbnail, width/2-(width+50)/2-(mouseX-50)/2, height/2 - (height+50)/2-(mouseY-50)/2, width+50, height+50);
       ctx.drawImage(logo, canvas.width/2-logo.width/2, 30, logo.width, logo.height);
-      /*ctx.font = "bold 60px Arial";
-      ctx.fillStyle = "rgb(0, 0, 0, .7)";
-      ctx.fillText("Plane Battle", canvas.width/2, 90);*/
     }
     for (let button of Button.buttons) {
       if (button.visible && button.props.targetScreen === gameState) {
@@ -560,8 +592,10 @@ setInterval(function() {
     drawText(ctx, "Instructions", canvas.width/2, 30, 40, "black", "center", "Helvetica");
     drawText(ctx, "Use WASD to turn and aim your plane and space to shoot", canvas.width/2, 70, 20, "black", "center", "Trebuchet MS");
     drawText(ctx, "Use mouse to turn camera", canvas.width/2, 98, 20, "black", "center", "Trebuchet MS");
-    drawText(ctx, "Shoot the enemy and avoid their shots", canvas.width/2, 126, 20, "black", "center", "Trebuchet MS");
-    drawText(ctx, "And don't crash!", canvas.width/2, 154, 20, "black", "center", "Trebuchet MS");
+    drawText(ctx, "Press 'c' to lock/unlock the camera", canvas.width/2, 126, 20, "black", "center", "Trebuchet MS");
+    drawText(ctx, "Press i/o to zoom in/out", canvas.width/2, 154, 20, "black", "center", "Trebuchet MS");
+    drawText(ctx, "Shoot the enemy and avoid their shots", canvas.width/2, 182, 20, "black", "center", "Trebuchet MS");
+    drawText(ctx, "And don't crash!", canvas.width/2, 210, 20, "black", "center", "Trebuchet MS");
   }
 }, 20);
 
@@ -653,6 +687,13 @@ let instructions = new Button(29.5, 85, 15, 10, "rgb(150, 150, 150)", {value:"In
 let github = new Button(87, 88, 12, 10, "rgb(150, 150, 150)", {value:"Github", font:"Courier, monospace", size:20}, "menu", function() {
   let link = document.createElement("a");
   link.href = "https://github.com/gosoccerboy5/plane-battle";
+  link.target = "_blank";
+  link.click();
+  mouseDown = false;
+});
+let minigolf = new Button(1, 88, 12, 10, "rgb(150, 150, 150)", {value:"Mini Golf", font:"Courier, monospace", size:20}, "menu", function() {
+  let link = document.createElement("a");
+  link.href = "https://gosoccerboy5.github.io/minigolf/";
   link.target = "_blank";
   link.click();
   mouseDown = false;
